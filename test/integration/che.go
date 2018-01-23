@@ -74,7 +74,7 @@ func generateStackData(stackData []util.Workspace, samples []util.Sample) (map[s
 func (c *CheRunner) weTryToGetTheCheApiEndpoint() error {
 	fmt.Printf("Trying to get Che endpoint\n")
 
-	err3 := minishift.executingOcCommand("oc --help\n")
+	err3 := minishift.executingOcCommand("--help\n")
 
 	if err3 != nil {
 		fmt.Printf("%v", err3)
@@ -87,7 +87,7 @@ func (c *CheRunner) weTryToGetTheCheApiEndpoint() error {
 	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].StdErr)
 	fmt.Printf("%v\n\n", commandOutputs[len(commandOutputs)-1].ExitCode)
 
-	err := minishift.executingOcCommand("oc project mini-che\n")
+	err := minishift.executingOcCommand("project mini-che\n")
 
 	if err != nil {
 		fmt.Printf("%v", err)
@@ -100,7 +100,7 @@ func (c *CheRunner) weTryToGetTheCheApiEndpoint() error {
 	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].StdErr)
 	fmt.Printf("%v\n\n", commandOutputs[len(commandOutputs)-1].ExitCode)
 
-	err2 := minishift.executingOcCommand("oc get routes --template='{{.items.spec.host}}'\n")
+	err2 := minishift.executingOcCommand("get routes --template='{{.items.spec.host}}'\n")
 
 	if err2 != nil {
 		fmt.Printf("%v", err2)
