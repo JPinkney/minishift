@@ -74,46 +74,26 @@ func generateStackData(stackData []util.Workspace, samples []util.Sample) (map[s
 func (c *CheRunner) weTryToGetTheCheApiEndpoint() error {
 	fmt.Printf("Trying to get Che endpoint\n")
 
-	err3 := minishift.executingOcCommand("--help\n")
-
-	if err3 != nil {
-		fmt.Printf("%v", err3)
-		return err3
-	}
-
-	fmt.Printf("Executing first command output response\n")
-	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].Command)
-	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].StdOut)
-	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].StdErr)
-	fmt.Printf("%v\n\n", commandOutputs[len(commandOutputs)-1].ExitCode)
-
-	err := minishift.executingOcCommand("project mini-che\n")
+	err := minishift.executingOcCommand("project mini-che")
 
 	if err != nil {
 		fmt.Printf("%v", err)
 		return err
 	}
 
-	fmt.Printf("Executing first command output response\n")
-	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].Command)
-	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].StdOut)
-	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].StdErr)
-	fmt.Printf("%v\n\n", commandOutputs[len(commandOutputs)-1].ExitCode)
-
-	err2 := minishift.executingOcCommand("get routes --template='{{.items.spec.host}}'\n")
-
-	if err2 != nil {
-		fmt.Printf("%v", err2)
-		return err
-	}
+	err2 := minishift.executingOcCommand("get routes --template='{{range .items}}{{.spec.host}}'")
 
 	fmt.Printf("Executing second command output response\n")
 	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].Command)
 	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].StdOut)
 	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].StdErr)
-	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].ExitCode)
+	fmt.Printf("%v\n\n", commandOutputs[len(commandOutputs)-1].ExitCode)
 
-	fmt.Printf("%v", len(commandOutputs))
+	if err2 != nil {
+		fmt.Printf("%v", err2)
+		return err
+	}
+	
 	if len(commandOutputs) > 0 {
 		c.runner.CheAPIEndpoint = commandOutputs[len(commandOutputs)-1].StdOut
 	}
