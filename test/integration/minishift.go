@@ -21,10 +21,11 @@ package integration
 import (
 	"errors"
 	"fmt"
-	"github.com/minishift/minishift/test/integration/util"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/minishift/minishift/test/integration/util"
 )
 
 var commandOutputs []CommandOutput
@@ -52,7 +53,6 @@ func (m *Minishift) shouldHaveState(expected string) error {
 	if !strings.Contains(actual, expected) {
 		return fmt.Errorf("Minishift state did not match. Expected: %s, Actual: %s", expected, actual)
 	}
-
 	return nil
 }
 
@@ -157,7 +157,9 @@ func (m *Minishift) processVariables(command string) string {
 }
 
 func (m *Minishift) executingOcCommand(command string) error {
+
 	ocRunner := m.runner.GetOcRunner()
+
 	if ocRunner == nil {
 		util.LogMessage("warning", "OC binary can't be detected, minishift is not Running")
 		return errors.New("Minishift is not Running")
