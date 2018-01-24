@@ -81,7 +81,7 @@ func (c *CheRunner) weTryToGetTheCheApiEndpoint() error {
 		return err
 	}
 
-	err2 := minishift.executingOcCommand("get routes --template='{{range .items}}{{.spec.host}}'")
+	err2 := minishift.executingOcCommand("get routes --template='{{range .items}}{{.spec.host}}{{end}}'")
 
 	fmt.Printf("Executing second command output response\n")
 	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].Command)
@@ -95,7 +95,7 @@ func (c *CheRunner) weTryToGetTheCheApiEndpoint() error {
 	}
 	
 	if len(commandOutputs) > 0 {
-		c.runner.CheAPIEndpoint = commandOutputs[len(commandOutputs)-1].StdOut
+		c.runner.CheAPIEndpoint = "http://"+commandOutputs[len(commandOutputs)-1].StdOut+"/api"
 	}
 
 	return nil
