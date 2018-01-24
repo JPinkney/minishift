@@ -18,7 +18,7 @@ Feature: Che add-on
     When executing "minishift start --memory 4GB" succeeds
     Then Minishift should have state "Running"
     And stdout should contain "che"
-    Then executing "minishift addons apply --addon-env CHE_DOCKER_IMAGE=eclipse/che-server:nightly --addon-env OPENSHIFT_TOKEN=$(oc whoami -t) che" succeeds
+    Then executing "minishift addons apply --addon-env CHE_DOCKER_IMAGE=eclipse/che-server:nightly che" succeeds
     And stdout should contain "che"
   
   Scenario Outline: User starts workspace, imports projects, checks run commands
@@ -44,3 +44,7 @@ Feature: Che add-on
     | Eclipse Vert.x        | https://github.com/openshiftio-vertx-boosters/vertx-http-booster         |
     | Java CentOS           | https://github.com/che-samples/console-java-simple.git                   |
     | Spring Boot           | https://github.com/snowdrop/spring-boot-http-booster                     |
+  
+  Scenario: User deletes Minishift
+     When executing "minishift delete --force" succeeds
+     Then Minishift should have state "Does Not Exist"
