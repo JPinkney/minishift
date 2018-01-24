@@ -374,6 +374,10 @@ func (c *CheAPI) StartWorkspace(workspaceConfiguration interface{}, stackID stri
 	re := regexp.MustCompile(",[\\n|\\s]*\"com.redhat.bayesian.lsp\"")
 	noBayesian := re.ReplaceAllString(string(marshalled), "")
 
+	fmt.Printf(c.CheAPIEndpoint+"/workspace?start-after-create=true")
+
+	fmt.Printf("%v", noBayesian)
+
 	req, err := http.NewRequest("POST", c.CheAPIEndpoint+"/workspace?start-after-create=true", bytes.NewBufferString(noBayesian))
 
 	req.Header.Set("Content-Type", "application/json")
