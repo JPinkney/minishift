@@ -185,6 +185,7 @@ type CheAPI struct {
 	ExecAgentURL   string
 	WSAgentURL     string
 	PID            int
+	StackName      string
 }
 
 //Helper functions
@@ -276,7 +277,7 @@ func (c *CheAPI) AddSamplesToProject(sample []Sample) error {
 	marshalled, _ := json.MarshalIndent(sampleArray, "", "    ")
 	req, err := http.NewRequest("POST", c.WSAgentURL+"/project/batch", bytes.NewBufferString(string(marshalled)))
 	req.Header.Set("Content-Type", "application/json")
-	fmt.Printf("%v", string(marshalled))
+
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -373,10 +374,6 @@ func (c *CheAPI) StartWorkspace(workspaceConfiguration interface{}, stackID stri
 	marshalled, _ := json.MarshalIndent(a, "", "    ")
 	re := regexp.MustCompile(",[\\n|\\s]*\"com.redhat.bayesian.lsp\"")
 	noBayesian := re.ReplaceAllString(string(marshalled), "")
-
-	fmt.Printf(c.CheAPIEndpoint+"/workspace?start-after-create=true")
-
-	fmt.Printf("%v", noBayesian)
 
 	req, err := http.NewRequest("POST", c.CheAPIEndpoint+"/workspace?start-after-create=true", bytes.NewBufferString(noBayesian))
 
@@ -489,4 +486,8 @@ func (c *CheAPI) SetAgentsURL(agents Agent) {
 
 func (c *CheAPI) SetWorkspaceID(workspaceID string) {
 	c.WorkspaceID = workspaceID
+}
+
+func (c *CheAPI) SetStackName(stackName string) {
+	c.StackName = stackName
 }

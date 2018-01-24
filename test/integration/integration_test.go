@@ -312,6 +312,7 @@ func FeatureContext(s *godog.Suite) {
 		runner: cheAPI,
 	}
 
+	s.Step(`^applying CHE_DOCKER_IMAGE and OPENSHIFT_TOKEN succeeds$`, cheAPIRunner.applyingCHE_DOCKER_IMAGEAndOPENSHIFT_TOKENSucceeds)
 	// steps for testing che addon
 	s.BeforeScenario(cheAPIRunner.getStackInformation)
 	s.Step(`^we try to get the che api endpoint$`, cheAPIRunner.weTryToGetTheCheApiEndpoint)

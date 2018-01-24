@@ -1,4 +1,4 @@
-@che @che5
+@che @che6
 Feature: Che add-on
   Che addon starts Eclipse Che
   
@@ -9,14 +9,13 @@ Feature: Che add-on
     And file from "https://raw.githubusercontent.com/l0rd/minishift-addons/6866413f44ab265c7fa8e52e49203f17ac180454/add-ons/che/templates/che-single-user.yml" is downloaded into location "download/che/templates"
     And file from "https://raw.githubusercontent.com/l0rd/minishift-addons/6866413f44ab265c7fa8e52e49203f17ac180454/add-ons/che/che.addon" is downloaded into location "download/che"
     And executing "minishift addons install ../../out/integration-test/download/che" succeeds
-    And executing "minishift addons enable che" succeeds
-    Then executing "minishift addons list" succeeds
-    And stdout should contain "che"
   
   Scenario: User starts Minishift
     Given Minishift has state "Does Not Exist"
     When executing "minishift start --memory 4GB" succeeds
     Then Minishift should have state "Running"
+    When applying CHE_DOCKER_IMAGE and OPENSHIFT_TOKEN succeeds
+    Then executing "minishift addons list" succeeds
     And stdout should contain "che"
 
   Scenario Outline: User starts workspace, imports projects, checks run commands

@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/minishift/minishift/test/integration/util"
 )
@@ -32,12 +33,12 @@ type CheRunner struct {
 }
 
 var samples = "https://raw.githubusercontent.com/eclipse/che/master/ide/che-core-ide-templates/src/main/resources/samples.json"
-var stacks = "https://raw.githubusercontent.com/redhat-developer/rh-che/master/assembly/fabric8-stacks/src/main/resources/stacks.json"
+var che6Stacks = "https://raw.githubusercontent.com/eclipse/che/master/ide/che-core-ide-stacks/src/main/resources/stacks.json"
 var stackConfigMap map[string]util.Workspace
 var sampleConfigMap map[string]util.Sample
 
 func (c *CheRunner) getStackInformation(arg interface{}) {
-	stackData := c.runner.GetJSON(stacks)
+	stackData := c.runner.GetJSON(che6Stacks)
 	var data []util.Workspace
 	jsonStackErr := json.Unmarshal(stackData, &data)
 
@@ -71,32 +72,44 @@ func generateStackData(stackData []util.Workspace, samples []util.Sample) (map[s
 	return stackConfigInfo, sampleConfigInfo
 }
 
+func (c *CheRunner) applyingCHE_DOCKER_IMAGEAndOPENSHIFT_TOKENSucceeds() error {
+	err := minishift.executingOcCommand("whoami -t")
+
+	if err != nil {
+		return err
+	}
+
+	minishiftErr := minishift.executingMinishiftCommand("addons apply --addon-env CHE_DOCKER_IMAGE=eclipse/che-server:nightly --addon-env OPENSHIFT_TOKEN=" + commandOutputs[len(commandOutputs)-1].StdOut + " che")
+
+	if minishiftErr != nil {
+		return minishiftErr
+	}
+
+	time.Sleep(2 * time.Minute)
+
+	return nil
+}
+
 func (c *CheRunner) weTryToGetTheCheApiEndpoint() error {
-	fmt.Printf("Trying to get Che endpoint\n")
 
 	err := minishift.executingOcCommand("project mini-che")
 
 	if err != nil {
-		fmt.Printf("%v", err)
 		return err
 	}
 
 	err2 := minishift.executingOcCommand("get routes --template='{{range .items}}{{.spec.host}}{{end}}'")
 
-	fmt.Printf("Executing second command output response\n")
-	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].Command)
-	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].StdOut)
-	fmt.Printf("%v\n", commandOutputs[len(commandOutputs)-1].StdErr)
-	fmt.Printf("%v\n\n", commandOutputs[len(commandOutputs)-1].ExitCode)
-
 	if err2 != nil {
-		fmt.Printf("%v", err2)
 		return err
 	}
-	
+
 	if len(commandOutputs) > 0 {
 		endpoint := strings.Replace(commandOutputs[len(commandOutputs)-1].StdOut, "'", "", -1)
-		c.runner.CheAPIEndpoint = "http://"+endpoint+"/api"
+
+		if c.runner.CheAPIEndpoint == "" {
+			c.runner.CheAPIEndpoint = "http://" + endpoint + "/api"
+		}
 	}
 
 	return nil
@@ -117,6 +130,7 @@ func (c *CheRunner) startingAWorkspaceWithStackSucceeds(stackName string) error 
 	}
 	c.runner.SetWorkspaceID(workspace.ID)
 	c.runner.BlockWorkspaceUntilStarted(workspace.ID)
+	c.runner.SetStackName(stackName)
 	agents, err := c.runner.GetHTTPAgents(workspace.ID)
 	if err != nil {
 		return err
@@ -161,8 +175,21 @@ func (c *CheRunner) workspaceShouldHaveProject(numOfProjects int) error {
 }
 
 func (c *CheRunner) userRunsCommandOnSample(projectURL string) error {
-	sampleCommand := sampleConfigMap[projectURL].Commands[0]
-	c.runner.PID = c.runner.PostCommandToWorkspace(sampleCommand)
+
+	fmt.Printf("Here")
+	if len(sampleConfigMap[projectURL].Commands) == 0 {
+		fmt.Printf("Here 1")
+		sampleCommand := sampleConfigMap[projectURL].Commands[0]
+		fmt.Printf("Here 2")
+		c.runner.PID = c.runner.PostCommandToWorkspace(sampleCommand)
+	} else {
+		fmt.Printf("Here 3")
+		fmt.Printf("c.runner.StackName is %v", c.runner.StackName)
+		sampleCommand := stackConfigMap[c.runner.StackName].Command[0]
+		fmt.Printf("Here 4")
+		c.runner.PID = c.runner.PostCommandToWorkspace(sampleCommand)
+	}
+
 	return nil
 }
 
