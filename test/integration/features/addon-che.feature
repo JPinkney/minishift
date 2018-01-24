@@ -18,6 +18,8 @@ Feature: Che add-on
     When executing "minishift start --memory 4GB" succeeds
     Then Minishift should have state "Running"
     And stdout should contain "che"
+    Then executing "minishift addons apply --addon-env CHE_DOCKER_IMAGE=eclipse/che-server:nightly --addon-env OPENSHIFT_TOKEN=$(oc whoami -t) che" succeeds
+    And stdout should contain "che"
   
   Scenario Outline: User starts workspace, imports projects, checks run commands
     Given Minishift has state "Running"
