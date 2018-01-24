@@ -95,7 +95,8 @@ func (c *CheRunner) weTryToGetTheCheApiEndpoint() error {
 	}
 	
 	if len(commandOutputs) > 0 {
-		c.runner.CheAPIEndpoint = "http://"+commandOutputs[len(commandOutputs)-1].StdOut+"/api"
+		endpoint := strings.Replace(commandOutputs[len(commandOutputs)-1].StdOut, "'", "", -1)
+		c.runner.CheAPIEndpoint = "http://"+endpoint+"/api"
 	}
 
 	return nil
