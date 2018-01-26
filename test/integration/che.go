@@ -33,29 +33,8 @@ type CheRunner struct {
 }
 
 var samples = "https://raw.githubusercontent.com/eclipse/che/master/ide/che-core-ide-templates/src/main/resources/samples.json"
-var che6Stacks = "https://raw.githubusercontent.com/eclipse/che/master/ide/che-core-ide-stacks/src/main/resources/stacks.json"
 var stackConfigMap map[string]util.Workspace
 var sampleConfigMap map[string]util.Sample
-
-func (c *CheRunner) getStackInformation(arg interface{}) {
-	stackData := c.runner.GetJSON(che6Stacks)
-	var data []util.Workspace
-	jsonStackErr := json.Unmarshal(stackData, &data)
-
-	if jsonStackErr != nil {
-		log.Fatal(jsonStackErr)
-	}
-
-	samplesJSON := c.runner.GetJSON(samples)
-	var sampleData []util.Sample
-	jsonSamplesErr := json.Unmarshal([]byte(samplesJSON), &sampleData)
-
-	if jsonSamplesErr != nil {
-		log.Fatal(jsonSamplesErr)
-	}
-
-	stackConfigMap, sampleConfigMap = generateStackData(data, sampleData)
-}
 
 func generateStackData(stackData []util.Workspace, samples []util.Sample) (map[string]util.Workspace, map[string]util.Sample) {
 
@@ -85,8 +64,6 @@ func (c *CheRunner) applyingCHE_DOCKER_IMAGEAndOPENSHIFT_TOKENSucceeds() error {
 		return minishiftErr
 	}
 
-	time.Sleep(2 * time.Minute)
-
 	return nil
 }
 
@@ -109,6 +86,7 @@ func (c *CheRunner) weTryToGetTheCheApiEndpoint() error {
 
 		if c.runner.CheAPIEndpoint == "" {
 			c.runner.CheAPIEndpoint = "http://" + endpoint + "/api"
+			time.Sleep(3 * time.Minute)
 		}
 	}
 
@@ -122,15 +100,50 @@ func (c *CheRunner) cheApiEndpointShouldNotBeEmpty() error {
 	return nil
 }
 
+func (c *CheRunner) weTryToGetTheStacksInformation() error {
+	stackData := c.runner.GetJSON(c.runner.CheAPIEndpoint + "/stack")
+	var data []util.Workspace
+	jsonStackErr := json.Unmarshal(stackData, &data)
+
+	if jsonStackErr != nil {
+		return fmt.Errorf("Could not retrieve stack information: %v. CheAPIEndpoint is: %v. Data is: %v", jsonStackErr, c.runner.CheAPIEndpoint+"/stack", data)
+	}
+
+	samplesJSON := c.runner.GetJSON(samples)
+	var sampleData []util.Sample
+	jsonSamplesErr := json.Unmarshal([]byte(samplesJSON), &sampleData)
+
+	if jsonSamplesErr != nil {
+		log.Fatal(jsonSamplesErr)
+	}
+
+	stackConfigMap, sampleConfigMap = generateStackData(data, sampleData)
+
+	return nil
+}
+
+func (c *CheRunner) theStacksShouldNotBeEmpty() error {
+	if len(stackConfigMap) == 0 || len(sampleConfigMap) == 0 {
+		return fmt.Errorf("Could not retrieve samples")
+	}
+	return nil
+}
+
 func (c *CheRunner) startingAWorkspaceWithStackSucceeds(stackName string) error {
 	stackStartEnvironment := stackConfigMap[stackName]
 	workspace, err := c.runner.StartWorkspace(stackStartEnvironment.Config.EnvironmentConfig, stackStartEnvironment.ID)
 	if err != nil {
 		return err
 	}
+
+	//fmt.Printf("Workspace ID is: %s", workspace.ID)
+
 	c.runner.SetWorkspaceID(workspace.ID)
 	c.runner.BlockWorkspaceUntilStarted(workspace.ID)
 	c.runner.SetStackName(stackName)
+
+	//fmt.Printf("Runner workspace ID is: %s", c.runner.WorkspaceID)
+
 	agents, err := c.runner.GetHTTPAgents(workspace.ID)
 	if err != nil {
 		return err

@@ -23,6 +23,8 @@ Feature: Che add-on
     Given Minishift has state "Running"
     When we try to get the che api endpoint
     Then che api endpoint should not be empty
+    When we try to get the stacks information
+    Then the stacks should not be empty
     When starting a workspace with stack "<stack>" succeeds
     Then workspace should have state "RUNNING"
     When importing the sample project "<sample>" succeeds

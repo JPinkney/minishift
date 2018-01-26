@@ -314,9 +314,11 @@ func FeatureContext(s *godog.Suite) {
 
 	s.Step(`^applying CHE_DOCKER_IMAGE and OPENSHIFT_TOKEN succeeds$`, cheAPIRunner.applyingCHE_DOCKER_IMAGEAndOPENSHIFT_TOKENSucceeds)
 	// steps for testing che addon
-	s.BeforeScenario(cheAPIRunner.getStackInformation)
+	//s.BeforeScenario(cheAPIRunner.getStackInformation)
 	s.Step(`^we try to get the che api endpoint$`, cheAPIRunner.weTryToGetTheCheApiEndpoint)
 	s.Step(`^che api endpoint should not be empty$`, cheAPIRunner.cheApiEndpointShouldNotBeEmpty)
+	s.Step(`^we try to get the stacks information$`, cheAPIRunner.weTryToGetTheStacksInformation)
+	s.Step(`^the stacks should not be empty$`, cheAPIRunner.theStacksShouldNotBeEmpty)
 	s.Step(`^starting a workspace with stack "([^"]*)" succeeds$`, cheAPIRunner.startingAWorkspaceWithStackSucceeds)
 	s.Step(`^workspace should have state "([^"]*)"$`, cheAPIRunner.workspaceShouldHaveState)
 	s.Step(`^importing the sample project "([^"]*)" succeeds$`, cheAPIRunner.importingTheSampleProjectSucceeds)

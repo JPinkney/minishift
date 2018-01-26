@@ -35,7 +35,7 @@ type Workspace struct {
 	Config  WorkspaceConfig     `json:"workspaceConfig"`
 	Source  WorkspaceSourceType `json:"source"`
 	Tags    []string            `json:"tags"`
-	Command []Command           `json:"commands"`
+	Command []Command           `json:"commands,omitempty"`
 	Name    string              `json:"name"`
 }
 
@@ -83,9 +83,9 @@ type WorkspaceConfig struct {
 	EnvironmentConfig EnvironmentConfig   `json:"environments"`
 	Name              string              `json:"name"`
 	DefaultEnv        string              `json:"defaultEnv"`
-	Description       interface{}         `json:"description"`
+	Description       interface{}         `json:"description,omitempty"`
 	Commands          []Command           `json:"commands"`
-	Source            WorkspaceSourceType `json:"source"`
+	Source            WorkspaceSourceType `json:"source,omitempty"`
 }
 
 type Command struct {
@@ -112,12 +112,25 @@ type Machine struct {
 	Machines map[string]Servers `json:"machines"`
 }
 
+type Che5RuntimeStruct struct {
+	Runtime Che5Machine `json:"runtime"`
+}
+
+type Che5Machine struct {
+	Machines []Che5Runtime `json:"machines"`
+}
+
+type Che5Runtime struct {
+	Runtime Servers `json:"runtime"`
+}
+
 type Servers struct {
 	Servers map[string]ServerURL `json:"servers"`
 }
 
 type ServerURL struct {
 	URL string `json:"url"`
+	Ref string `json:"ref,omitempty"`
 }
 
 type Agent struct {
@@ -215,9 +228,36 @@ func (c *CheAPI) GetJSON(url string) []byte {
 
 }
 
+func (c *CheAPI) doRequest(type, url, body string) ([]byte, error) {
+
+	client := http.Client{
+		Timeout: time.Second * 60,
+	}
+
+	buf2 := new(body)
+	req, err := http.NewRequest(type, url, buf2)
+	req.Header.Set("Content-Type", "application/json")
+	if err != nil {
+		return []byte{}, fmt.Errorf("Could not create request to URL: %s", url) 
+	}
+
+	res, getErr := client.Do(req)
+	if getErr != nil {
+		return []byte{}, fmt.Errorf("Could not get request Type %s at URL: %s", type, url) 
+	}
+
+	body, readErr := ioutil.ReadAll(res.Body)
+	if readErr != nil {
+		return []byte{}, fmt.Errorf("Could not read the request body") 
+	}
+
+	return body, nil
+
+}
+
 //ExecAgent Processes
 func (c *CheAPI) GetExecLogs(Pid int, execAgentURL string) LogArray {
-	jsonData := c.GetJSON(execAgentURL + "/" + strconv.Itoa(Pid) + "/logs")
+	jsonData := c.doRequest(http.MethodGet, execAgentURL + "/" + strconv.Itoa(Pid) + "/logs", "")
 	var data LogArray
 	jsonErr := json.Unmarshal(jsonData, &data)
 	if jsonErr != nil {
@@ -228,7 +268,7 @@ func (c *CheAPI) GetExecLogs(Pid int, execAgentURL string) LogArray {
 }
 
 func (c *CheAPI) GetCommandExitCode(Pid int) ProcessStruct {
-	jsonData := c.GetJSON(c.ExecAgentURL + "/" + strconv.Itoa(Pid))
+	jsonData := c.doRequest(http.MethodGet, c.ExecAgentURL + "/" + strconv.Itoa(Pid), "")
 	var data ProcessStruct
 	jsonErr := json.Unmarshal(jsonData, &data)
 	if jsonErr != nil {
@@ -238,65 +278,47 @@ func (c *CheAPI) GetCommandExitCode(Pid int) ProcessStruct {
 	return data
 }
 
-func (c *CheAPI) PostCommandToWorkspace(sampleCommand Command) int {
+func (c *CheAPI) PostCommandToWorkspace(sampleCommand Command) (int, error) {
 	sampleCommandMarshalled, _ := json.MarshalIndent(sampleCommand, "", "    ")
-	req, err := http.NewRequest("POST", c.ExecAgentURL, bytes.NewBufferString(string(sampleCommandMarshalled)))
-	req.Header.Set("Content-Type", "application/json")
+	body, err := c.doRequest(http.MethodPost, c.ExecAgentURL, bytes.NewBufferString(string(sampleCommandMarshalled)))
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		return -1, err
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		panic(err.Error())
-	}
 	var data ProcessStruct
-
-	err = json.Unmarshal([]byte(body), &data)
+	err = json.Unmarshal(body, &data)
 	if err != nil {
-		panic(err.Error())
+		return -1, fmt.Errorf("Could not unmarshalled into ProcessStruct")
 	}
 
-	defer resp.Body.Close()
-
-	return data.Pid
-
+	return data.Pid, nil
 }
 
 //WSAgent Processes
 func (c *CheAPI) AddSamplesToProject(sample []Sample) error {
 
-	var sampleArray []interface{}
-	for _, workspaceSample := range sample {
-		sampleArray = append(sampleArray, workspaceSample)
-	}
-
-	marshalled, _ := json.MarshalIndent(sampleArray, "", "    ")
-	req, err := http.NewRequest("POST", c.WSAgentURL+"/project/batch", bytes.NewBufferString(string(marshalled)))
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	marshalled, _ := json.MarshalIndent(sample, "", "    ")
+	req, err := c.doRequest(http.MethodPost, c.WSAgentURL+"/project/batch", bytes.NewBufferString(string(marshalled)))
 	if err != nil {
-		return fmt.Errorf("Could not complete the http request: %v", err)
+		return err
 	}
-
-	defer resp.Body.Close()
 
 	return nil
 }
 
 func (c *CheAPI) GetNumberOfProjects() (int, error) {
 
-	projectData := c.GetJSON(c.WSAgentURL + "/project")
+	projectData, reqErr := c.doRequest(http.MethodGet, c.WSAgentURL + "/project", "")
+
+	if reqErr != nil {
+		return -1, reqErr
+	}
 
 	var data []Sample
 	jsonErr := json.Unmarshal(projectData, &data)
 	if jsonErr != nil {
-		return -1, fmt.Errorf("Could not unmrshall data into []Sample: %v", jsonErr)
+		return -1, fmt.Errorf("Could not unmarshall data into []Sample: %v", jsonErr)
 	}
 
 	return len(data), nil
@@ -307,6 +329,7 @@ func (c *CheAPI) BlockWorkspaceUntilStarted(workspaceID string) error {
 	if err != nil {
 		return err
 	}
+
 	for workspaceStatus.WorkspaceStatus == "STARTING" {
 		time.Sleep(30 * time.Second)
 		workspaceStatus, err = c.GetWorkspaceStatusByID(workspaceID)
@@ -314,6 +337,7 @@ func (c *CheAPI) BlockWorkspaceUntilStarted(workspaceID string) error {
 			return err
 		}
 	}
+	
 	return nil
 }
 
@@ -348,7 +372,13 @@ func (c *CheAPI) GetHTTPAgents(workspaceID string) (Agent, error) {
 	var data RuntimeStruct
 	jsonErr := json.Unmarshal(runtimeData, &data)
 	if jsonErr != nil {
-		return agents, fmt.Errorf("Could not unmarshall data into RuntimeStruct: %v", jsonErr)
+		fmt.Errorf("Could not unmarshall data into RuntimeStruct: %v", jsonErr)
+	}
+
+	var data2 Che5RuntimeStruct
+	jsonErr2 := json.Unmarshal(runtimeData, &data2)
+	if jsonErr2 != nil {
+		fmt.Errorf("Could not unmarshall data into Che5Runtime: %v", jsonErr2)
 	}
 
 	for key := range data.Runtime.Machines {
@@ -365,6 +395,19 @@ func (c *CheAPI) GetHTTPAgents(workspaceID string) (Agent, error) {
 		}
 	}
 
+	for index, _ := range data2.Runtime.Machines {
+		for _, server := range data2.Runtime.Machines[index].Runtime.Servers {
+			fmt.Printf("SERVER IS: %s", server)
+			if server.Ref == "exec-agent" {
+				agents.execAgentURL = server.URL
+			}
+
+			if server.Ref == "wsagent" {
+				agents.wsAgentURL = server.URL
+			}
+		}
+	}
+
 	return agents, nil
 }
 
@@ -374,6 +417,8 @@ func (c *CheAPI) StartWorkspace(workspaceConfiguration interface{}, stackID stri
 	marshalled, _ := json.MarshalIndent(a, "", "    ")
 	re := regexp.MustCompile(",[\\n|\\s]*\"com.redhat.bayesian.lsp\"")
 	noBayesian := re.ReplaceAllString(string(marshalled), "")
+
+	//fmt.Printf("%s\n", noBayesian)
 
 	req, err := http.NewRequest("POST", c.CheAPIEndpoint+"/workspace?start-after-create=true", bytes.NewBufferString(noBayesian))
 
@@ -391,10 +436,6 @@ func (c *CheAPI) StartWorkspace(workspaceConfiguration interface{}, stackID stri
 
 	var WorkspaceResponse Workspace2
 	json.Unmarshal(buf.Bytes(), &WorkspaceResponse)
-
-	if WorkspaceResponse.ID == "" {
-		return WorkspaceResponse, fmt.Errorf("Could not get starting ID")
-	}
 
 	return WorkspaceResponse, nil
 }
@@ -423,7 +464,10 @@ func (c *CheAPI) GetWorkspaceStatusByID(workspaceID string) (WorkspaceStatus, er
 		return data, fmt.Errorf("Could not retrieve response body: %v", readErr)
 	}
 
-	jsonErr := json.Unmarshal([]byte(body), &data)
+	fmt.Printf("Trying to understand wtf is happening")
+	fmt.Printf("%v", string(body))
+
+	jsonErr := json.Unmarshal(body, &data)
 	if jsonErr != nil {
 		return data, fmt.Errorf("Could not unmarshal contents into WorkspaceStatus: %v", jsonErr)
 	}
