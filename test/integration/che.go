@@ -1,5 +1,3 @@
-// +build integration
-
 /*
 Copyright (C) 2017 Red Hat, Inc.
 
@@ -19,9 +17,7 @@ limitations under the License.
 package integration
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -30,41 +26,6 @@ import (
 
 type CheRunner struct {
 	runner util.CheAPI
-}
-
-var samples = "https://raw.githubusercontent.com/eclipse/che/master/ide/che-core-ide-templates/src/main/resources/samples.json"
-var stackConfigMap map[string]util.Workspace
-var sampleConfigMap map[string]util.Sample
-
-func generateStackData(stackData []util.Workspace, samples []util.Sample) (map[string]util.Workspace, map[string]util.Sample) {
-
-	stackConfigInfo := make(map[string]util.Workspace)
-	sampleConfigInfo := make(map[string]util.Sample)
-	for _, stackElement := range stackData {
-		stackConfigInfo[stackElement.Name] = stackElement
-	}
-
-	for _, sampleElement := range samples {
-		sampleConfigInfo[sampleElement.Source.Location] = sampleElement
-	}
-
-	return stackConfigInfo, sampleConfigInfo
-}
-
-func (c *CheRunner) applyingCHE_DOCKER_IMAGEAndOPENSHIFT_TOKENSucceeds() error {
-	err := minishift.executingOcCommand("whoami -t")
-
-	if err != nil {
-		return err
-	}
-
-	minishiftErr := minishift.executingMinishiftCommand("addons apply --addon-env CHE_DOCKER_IMAGE=eclipse/che-server:nightly --addon-env OPENSHIFT_TOKEN=" + commandOutputs[len(commandOutputs)-1].StdOut + " che")
-
-	if minishiftErr != nil {
-		return minishiftErr
-	}
-
-	return nil
 }
 
 func (c *CheRunner) weTryToGetTheCheApiEndpoint() error {
@@ -100,55 +61,64 @@ func (c *CheRunner) cheApiEndpointShouldNotBeEmpty() error {
 	return nil
 }
 
+func (minishift *Minishift) applyingCHE_DOCKER_IMAGEAndOPENSHIFT_TOKENSucceeds() error {
+	err := minishift.executingOcCommand("whoami -t")
+
+	if err != nil {
+		return err
+	}
+
+	minishiftErr := minishift.executingMinishiftCommand("addons apply --addon-env CHE_DOCKER_IMAGE=eclipse/che-server:nightly --addon-env OPENSHIFT_TOKEN=" + commandOutputs[len(commandOutputs)-1].StdOut + " che")
+
+	if minishiftErr != nil {
+		return minishiftErr
+	}
+
+	return nil
+}
+
 func (c *CheRunner) weTryToGetTheStacksInformation() error {
-	stackData := c.runner.GetJSON(c.runner.CheAPIEndpoint + "/stack")
-	var data []util.Workspace
-	jsonStackErr := json.Unmarshal(stackData, &data)
 
-	if jsonStackErr != nil {
-		return fmt.Errorf("Could not retrieve stack information: %v. CheAPIEndpoint is: %v. Data is: %v", jsonStackErr, c.runner.CheAPIEndpoint+"/stack", data)
+	workspaces, stackErr := c.runner.GetStackInformation()
+
+	if stackErr != nil {
+		return stackErr
 	}
 
-	samplesJSON := c.runner.GetJSON(samples)
-	var sampleData []util.Sample
-	jsonSamplesErr := json.Unmarshal([]byte(samplesJSON), &sampleData)
+	samples, samplesErr := c.runner.GetSamplesInformation()
 
-	if jsonSamplesErr != nil {
-		log.Fatal(jsonSamplesErr)
+	if samplesErr != nil {
+		return samplesErr
 	}
 
-	stackConfigMap, sampleConfigMap = generateStackData(data, sampleData)
+	c.runner.GenerateDataForWorkspaces(workspaces, samples)
 
 	return nil
 }
 
 func (c *CheRunner) theStacksShouldNotBeEmpty() error {
-	if len(stackConfigMap) == 0 || len(sampleConfigMap) == 0 {
+	if len(c.runner.GetStackConfigMap()) == 0 || len(c.runner.GetSamplesConfigMap()) == 0 {
 		return fmt.Errorf("Could not retrieve samples")
 	}
 	return nil
 }
 
 func (c *CheRunner) startingAWorkspaceWithStackSucceeds(stackName string) error {
-	stackStartEnvironment := stackConfigMap[stackName]
+	stackStartEnvironment := c.runner.GetStackConfigMap()[stackName]
 	workspace, err := c.runner.StartWorkspace(stackStartEnvironment.Config.EnvironmentConfig, stackStartEnvironment.ID)
 	if err != nil {
 		return err
 	}
 
-	//fmt.Printf("Workspace ID is: %s", workspace.ID)
-
 	c.runner.SetWorkspaceID(workspace.ID)
-	c.runner.BlockWorkspaceUntilStarted(workspace.ID)
 	c.runner.SetStackName(stackName)
-
-	//fmt.Printf("Runner workspace ID is: %s", c.runner.WorkspaceID)
 
 	agents, err := c.runner.GetHTTPAgents(workspace.ID)
 	if err != nil {
 		return err
 	}
 	c.runner.SetAgentsURL(agents)
+
 	return nil
 }
 
@@ -166,7 +136,7 @@ func (c *CheRunner) workspaceShouldHaveState(expectedState string) error {
 }
 
 func (c *CheRunner) importingTheSampleProjectSucceeds(projectURL string) error {
-	sample := sampleConfigMap[projectURL]
+	sample := c.runner.GetSamplesConfigMap()[projectURL]
 	err := c.runner.AddSamplesToProject([]util.Sample{sample})
 	if err != nil {
 		return err
@@ -188,28 +158,31 @@ func (c *CheRunner) workspaceShouldHaveProject(numOfProjects int) error {
 }
 
 func (c *CheRunner) userRunsCommandOnSample(projectURL string) error {
-
-	fmt.Printf("Here")
-	if len(sampleConfigMap[projectURL].Commands) == 0 {
-		fmt.Printf("Here 1")
-		sampleCommand := sampleConfigMap[projectURL].Commands[0]
-		fmt.Printf("Here 2")
-		c.runner.PID = c.runner.PostCommandToWorkspace(sampleCommand)
+	stackConfigMap := c.runner.GetStackConfigMap()[c.runner.StackName]
+	sampleConfigMap := c.runner.GetSamplesConfigMap()[projectURL]
+	if len(sampleConfigMap.Commands) > 0 {
+		commandInfo := sampleConfigMap.Commands[0]
+		commandInfo.CommandLine = strings.Replace(commandInfo.CommandLine, "${current.project.path}", "/projects"+sampleConfigMap.Path, -1)
+		commandInfo.CommandLine = strings.Replace(commandInfo.CommandLine, "${GAE}", "/home/user/google_appengine", -1)
+		commandInfo.CommandLine = strings.Replace(commandInfo.CommandLine, "$TOMCAT_HOME", "/home/user/tomcat8", -1)
+		c.runner.PID, _ = c.runner.PostCommandToWorkspace(commandInfo)
+	} else if len(stackConfigMap.Command) > 0 {
+		commandInfo := stackConfigMap.Command[0]
+		commandInfo.CommandLine = strings.Replace(commandInfo.CommandLine, "${current.project.path}", "/projects"+sampleConfigMap.Path, -1)
+		commandInfo.CommandLine = strings.Replace(commandInfo.CommandLine, "${GAE}", "/home/user/google_appengine", -1)
+		commandInfo.CommandLine = strings.Replace(commandInfo.CommandLine, "$TOMCAT_HOME", "/home/user/tomcat8", -1)
+		c.runner.PID, _ = c.runner.PostCommandToWorkspace(commandInfo)
 	} else {
-		fmt.Printf("Here 3")
-		fmt.Printf("c.runner.StackName is %v", c.runner.StackName)
-		sampleCommand := stackConfigMap[c.runner.StackName].Command[0]
-		fmt.Printf("Here 4")
-		c.runner.PID = c.runner.PostCommandToWorkspace(sampleCommand)
+		return fmt.Errorf("There are no sample commands give by the stack or the sample")
 	}
 
 	return nil
 }
 
 func (c *CheRunner) exitCodeShouldBe(code int) error {
-	// if c.runner.PID != code {
-	// 	return fmt.Errorf("return command was not 0")
-	// }
+	if c.runner.PID != code {
+		return fmt.Errorf("return command was not 0")
+	}
 	return nil
 }
 
@@ -231,13 +204,9 @@ func (c *CheRunner) workspaceIsRemoved() error {
 
 func (c *CheRunner) workspaceRemovalShouldBeSuccessful() error {
 
-	respCode, err := c.runner.CheckWorkspaceDeletion(c.runner.WorkspaceID)
+	err := c.runner.CheckWorkspaceDeletion(c.runner.WorkspaceID)
 	if err != nil {
 		return err
-	}
-
-	if respCode != 404 {
-		return fmt.Errorf("Workspace has not been removed")
 	}
 
 	return nil

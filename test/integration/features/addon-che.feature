@@ -15,7 +15,7 @@ Feature: Che add-on
   
   Scenario: User starts Minishift
     Given Minishift has state "Does Not Exist"
-    When executing "minishift start --memory 4GB" succeeds
+    When executing "minishift start --memory=5GB" succeeds
     Then Minishift should have state "Running"
     And stdout should contain "che"
 
@@ -38,7 +38,6 @@ Feature: Che add-on
     
     Examples:
     | stack                 | sample                                                                   |
-    | CentOS nodejs         | https://github.com/che-samples/web-nodejs-sample.git                     |
     | Eclipse Vert.x        | https://github.com/openshiftio-vertx-boosters/vertx-http-booster         |
     | Java CentOS           | https://github.com/che-samples/console-java-simple.git                   |
     | Spring Boot           | https://github.com/snowdrop/spring-boot-http-booster                     |

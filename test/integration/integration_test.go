@@ -312,9 +312,9 @@ func FeatureContext(s *godog.Suite) {
 		runner: cheAPI,
 	}
 
-	s.Step(`^applying CHE_DOCKER_IMAGE and OPENSHIFT_TOKEN succeeds$`, cheAPIRunner.applyingCHE_DOCKER_IMAGEAndOPENSHIFT_TOKENSucceeds)
+	s.Step(`^applying CHE_DOCKER_IMAGE and OPENSHIFT_TOKEN succeeds$`, minishift.applyingCHE_DOCKER_IMAGEAndOPENSHIFT_TOKENSucceeds)
+
 	// steps for testing che addon
-	//s.BeforeScenario(cheAPIRunner.getStackInformation)
 	s.Step(`^we try to get the che api endpoint$`, cheAPIRunner.weTryToGetTheCheApiEndpoint)
 	s.Step(`^che api endpoint should not be empty$`, cheAPIRunner.cheApiEndpointShouldNotBeEmpty)
 	s.Step(`^we try to get the stacks information$`, cheAPIRunner.weTryToGetTheStacksInformation)
@@ -328,6 +328,16 @@ func FeatureContext(s *godog.Suite) {
 	s.Step(`^user stops workspace$`, cheAPIRunner.userStopsWorkspace)
 	s.Step(`^workspace is removed$`, cheAPIRunner.workspaceIsRemoved)
 	s.Step(`^workspace removal should be successful$`, cheAPIRunner.workspaceRemovalShouldBeSuccessful)
+
+	s.AfterFeature(func(this *gherkin.Feature) {
+		cheAPI = util.CheAPI{
+			CheAPIEndpoint: "",
+		}
+
+		cheAPIRunner = &CheRunner{
+			runner: cheAPI,
+		}
+	})
 
 	s.BeforeSuite(func() {
 		testDir = setUp()

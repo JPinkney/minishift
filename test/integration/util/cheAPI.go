@@ -1,5 +1,3 @@
-// +build integration
-
 /*
 Copyright (C) 2017 Red Hat, Inc.
 
@@ -23,7 +21,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -52,24 +49,6 @@ type Project struct {
 	Sample interface{}
 }
 
-type WorkspaceSample struct {
-	Config     WorkspaceConfig
-	ID         string
-	Sample     interface{}
-	Command    []Command
-	SamplePath string
-}
-
-type WorkspaceStacks struct {
-	Namespace  string                   `json:"namespace"`
-	Status     string                   `json:"status"`
-	Config     WorkspaceConfig          `json:"config"`
-	Temporary  bool                     `json:"temporary"`
-	ID         string                   `json:"id"`
-	Attributes map[string]interface{}   `json:"attributes"`
-	Links      []map[string]interface{} `json:"links"`
-}
-
 type Sample struct {
 	Name        string           `json:"name"`
 	Source      SampleSourceType `json:"source"`
@@ -80,11 +59,11 @@ type Sample struct {
 }
 
 type WorkspaceConfig struct {
-	EnvironmentConfig EnvironmentConfig   `json:"environments"`
-	Name              string              `json:"name"`
-	DefaultEnv        string              `json:"defaultEnv"`
+	EnvironmentConfig EnvironmentConfig   `json:"environments,omitempty"`
+	Name              string              `json:"name,omitempty"`
+	DefaultEnv        string              `json:"defaultEnv,omitempty"`
 	Description       interface{}         `json:"description,omitempty"`
-	Commands          []Command           `json:"commands"`
+	Commands          []Command           `json:"commands,omitempty"`
 	Source            WorkspaceSourceType `json:"source,omitempty"`
 }
 
@@ -154,10 +133,10 @@ type LogArray []struct {
 	Text string    `json:"text"`
 }
 
-type WorkspaceTableItem struct {
-	Stack       string
-	ProjectName string
-	Cmd         string
+type LogItem struct {
+	Kind int       `json:"kind"`
+	Time time.Time `json:"time"`
+	Text string    `json:"text"`
 }
 
 type Post struct {
@@ -182,16 +161,6 @@ type WorkspaceStatus struct {
 	WorkspaceStatus string `json:"status"`
 }
 
-type stackTestRuntimeInfo struct {
-	ID                        string
-	ExecAgentURL              string
-	WSAgentURL                string
-	WorkspaceStartingID       string
-	CommandExitCode           int
-	WorkspaceStopStatusCode   int
-	WorkspaceRemoveStatusCode int
-}
-
 type CheAPI struct {
 	CheAPIEndpoint string
 	WorkspaceID    string
@@ -201,115 +170,185 @@ type CheAPI struct {
 	StackName      string
 }
 
-//Helper functions
-func (c *CheAPI) GetJSON(url string) []byte {
+var samples = "https://raw.githubusercontent.com/eclipse/che/master/ide/che-core-ide-templates/src/main/resources/samples.json"
+var stackConfigMap map[string]Workspace
+var sampleConfigMap map[string]Sample
+
+//doRequest does an new request with type requestType on url with data
+func doRequest(requestType, url, data string) ([]byte, int, error) {
 
 	client := http.Client{
 		Timeout: time.Second * 60,
 	}
 
-	buf2 := new(bytes.Buffer)
-	req, err := http.NewRequest(http.MethodGet, url, buf2)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	res, getErr := client.Do(req)
-	if getErr != nil {
-		log.Fatal(getErr)
-	}
-
-	body, readErr := ioutil.ReadAll(res.Body)
-	if readErr != nil {
-		log.Fatal(readErr)
-	}
-
-	return body
-
-}
-
-func (c *CheAPI) doRequest(type, url, body string) ([]byte, error) {
-
-	client := http.Client{
-		Timeout: time.Second * 60,
-	}
-
-	buf2 := new(body)
-	req, err := http.NewRequest(type, url, buf2)
+	req, err := http.NewRequest(requestType, url, bytes.NewBufferString(data))
 	req.Header.Set("Content-Type", "application/json")
+
 	if err != nil {
-		return []byte{}, fmt.Errorf("Could not create request to URL: %s", url) 
+		return []byte{}, -1, err
 	}
 
-	res, getErr := client.Do(req)
-	if getErr != nil {
-		return []byte{}, fmt.Errorf("Could not get request Type %s at URL: %s", type, url) 
+	res, doErr := client.Do(req)
+	if doErr != nil {
+		return nil, res.StatusCode, doErr
 	}
 
 	body, readErr := ioutil.ReadAll(res.Body)
 	if readErr != nil {
-		return []byte{}, fmt.Errorf("Could not read the request body") 
+		return nil, res.StatusCode, readErr
 	}
 
-	return body, nil
+	return body, res.StatusCode, nil
 
 }
 
-//ExecAgent Processes
-func (c *CheAPI) GetExecLogs(Pid int, execAgentURL string) LogArray {
-	jsonData := c.doRequest(http.MethodGet, execAgentURL + "/" + strconv.Itoa(Pid) + "/logs", "")
-	var data LogArray
-	jsonErr := json.Unmarshal(jsonData, &data)
+//GetExecLogs takes in the Process ID of the process you would like to get the logs for
+func (c *CheAPI) GetExecLogs(Pid int) (LogArray, error) {
+	execLogsJSON, _, reqErr := doRequest(http.MethodGet, c.ExecAgentURL+"/"+strconv.Itoa(Pid)+"/logs", "")
+
+	if reqErr != nil {
+		return LogArray{}, reqErr
+	}
+
+	var execLogData LogArray
+	jsonErr := json.Unmarshal(execLogsJSON, &execLogData)
 	if jsonErr != nil {
-		log.Fatal(jsonErr)
+		return execLogData, jsonErr
 	}
 
-	return data
+	return execLogData, nil
 }
 
-func (c *CheAPI) GetCommandExitCode(Pid int) ProcessStruct {
-	jsonData := c.doRequest(http.MethodGet, c.ExecAgentURL + "/" + strconv.Itoa(Pid), "")
-	var data ProcessStruct
-	jsonErr := json.Unmarshal(jsonData, &data)
+//isLongLivedProcess takes in the Process ID of the process you would like to check if its long running
+func (c *CheAPI) isLongLivedProcess(Pid int) (bool, error) {
+	lastLogData, execErr := c.GetLastLog(Pid)
+	if execErr != nil {
+		return false, execErr
+	}
+
+	commandExitCode, err := c.GetCommandExitCode(Pid)
+	if err != nil {
+		return false, err
+	}
+
+	equalsLastLogCount := 0
+	time.Sleep(15 * time.Second)
+
+	for equalsLastLogCount != 3 && commandExitCode.ExitCode == -1 {
+
+		newLastLogData, execErr := c.GetLastLog(Pid)
+
+		if execErr != nil {
+			return false, nil
+		}
+
+		if newLastLogData.Kind == lastLogData.Kind && newLastLogData.Text == lastLogData.Text && newLastLogData.Time == lastLogData.Time {
+			equalsLastLogCount++
+		} else {
+			equalsLastLogCount = 0
+		}
+
+		lastLogData = newLastLogData
+
+		time.Sleep(15 * time.Second)
+	}
+
+	if equalsLastLogCount == 3 {
+		return true, nil
+	}
+
+	return false, nil
+
+}
+
+//GetLastLog takes in the Process ID of the process you would like to get the logs for
+func (c *CheAPI) GetLastLog(Pid int) (LogItem, error) {
+	execLogData, execErr := c.GetExecLogs(Pid)
+
+	if execErr != nil {
+		return LogItem{}, execErr
+	}
+
+	if len(execLogData) > 1 {
+		return execLogData[len(execLogData)-1], nil
+	}
+
+	return LogItem{}, nil
+}
+
+//GetCommandExitCode takes in the Process ID of the process you would like to get the Process data for
+func (c *CheAPI) GetCommandExitCode(Pid int) (ProcessStruct, error) {
+	commandExitCodeJSON, _, reqErr := doRequest(http.MethodGet, c.ExecAgentURL+"/"+strconv.Itoa(Pid), "")
+
+	if reqErr != nil {
+		return ProcessStruct{}, reqErr
+	}
+
+	var processInfo ProcessStruct
+	jsonErr := json.Unmarshal(commandExitCodeJSON, &processInfo)
 	if jsonErr != nil {
-		log.Fatal(jsonErr)
+		return processInfo, jsonErr
 	}
 
-	return data
+	return processInfo, nil
 }
 
+//PostCommandToWorkspace creates and runs sampleCommand using the Exec Agent
 func (c *CheAPI) PostCommandToWorkspace(sampleCommand Command) (int, error) {
-	sampleCommandMarshalled, _ := json.MarshalIndent(sampleCommand, "", "    ")
-	body, err := c.doRequest(http.MethodPost, c.ExecAgentURL, bytes.NewBufferString(string(sampleCommandMarshalled)))
+	sampleCommandMarshalled, marshalErr := json.MarshalIndent(sampleCommand, "", "    ")
 
-	if err != nil {
-		return -1, err
+	if marshalErr != nil {
+		return -1, marshalErr
 	}
 
-	var data ProcessStruct
-	err = json.Unmarshal(body, &data)
-	if err != nil {
-		return -1, fmt.Errorf("Could not unmarshalled into ProcessStruct")
+	processJSON, _, reqErr := doRequest(http.MethodPost, c.ExecAgentURL, string(sampleCommandMarshalled))
+
+	if reqErr != nil {
+		return -1, reqErr
 	}
 
-	return data.Pid, nil
+	var processData ProcessStruct
+	unmarshalErr := json.Unmarshal(processJSON, &processData)
+	if unmarshalErr != nil {
+		return -1, unmarshalErr
+	}
+
+	longLived, longLivedErr := c.isLongLivedProcess(processData.Pid)
+	if longLivedErr != nil {
+		return -1, longLivedErr
+	}
+
+	if longLived {
+		return 0, nil
+	}
+
+	exitCode, _ := c.GetCommandExitCode(processData.Pid)
+	return exitCode.ExitCode, nil
+
 }
 
-//WSAgent Processes
+//AddSamplesToProject adds an array of samples to the workspace using WS Agent
 func (c *CheAPI) AddSamplesToProject(sample []Sample) error {
 
-	marshalled, _ := json.MarshalIndent(sample, "", "    ")
-	req, err := c.doRequest(http.MethodPost, c.WSAgentURL+"/project/batch", bytes.NewBufferString(string(marshalled)))
-	if err != nil {
-		return err
+	marshalled, marshallErr := json.MarshalIndent(sample, "", "    ")
+
+	if marshallErr != nil {
+		return marshallErr
+	}
+
+	_, _, reqErr := doRequest(http.MethodPost, c.WSAgentURL+"/project/batch", string(marshalled))
+
+	if reqErr != nil {
+		return reqErr
 	}
 
 	return nil
 }
 
+//GetNumberOfProjects gets the number of projects in a workspace
 func (c *CheAPI) GetNumberOfProjects() (int, error) {
 
-	projectData, reqErr := c.doRequest(http.MethodGet, c.WSAgentURL + "/project", "")
+	projectData, _, reqErr := doRequest(http.MethodGet, c.WSAgentURL+"/project", "")
 
 	if reqErr != nil {
 		return -1, reqErr
@@ -318,88 +357,54 @@ func (c *CheAPI) GetNumberOfProjects() (int, error) {
 	var data []Sample
 	jsonErr := json.Unmarshal(projectData, &data)
 	if jsonErr != nil {
-		return -1, fmt.Errorf("Could not unmarshall data into []Sample: %v", jsonErr)
+		return -1, jsonErr
 	}
 
 	return len(data), nil
 }
 
-func (c *CheAPI) BlockWorkspaceUntilStarted(workspaceID string) error {
-	workspaceStatus, err := c.GetWorkspaceStatusByID(workspaceID)
-	if err != nil {
-		return err
+//BlockWorkspace blocks the given workspaceID until it has started
+func (c *CheAPI) BlockWorkspace(workspaceID, untilStatus1, untilStatus2 string) error {
+	workspaceStatus, statusErr := c.GetWorkspaceStatusByID(workspaceID)
+
+	if statusErr != nil {
+		return statusErr
 	}
 
-	for workspaceStatus.WorkspaceStatus == "STARTING" {
+	for workspaceStatus.WorkspaceStatus == untilStatus1 || workspaceStatus.WorkspaceStatus == untilStatus2 {
 		time.Sleep(30 * time.Second)
-		workspaceStatus, err = c.GetWorkspaceStatusByID(workspaceID)
-		if err != nil {
-			return err
-		}
-	}
-	
-	return nil
-}
-
-func (c *CheAPI) BlockWorkspaceUntilStopped(workspaceID string) error {
-	workspaceStatus, err := c.GetWorkspaceStatusByID(workspaceID)
-	if err != nil {
-		return err
-	}
-	//Workspace hasn't quite shut down due to speed
-	for workspaceStatus.WorkspaceStatus == "SNAPSHOTTING" || workspaceStatus.WorkspaceStatus == "STOPPING" {
-		time.Sleep(15 * time.Second)
-		workspaceStatus, err = c.GetWorkspaceStatusByID(workspaceID)
-		if err != nil {
-			return err
+		workspaceStatus, statusErr = c.GetWorkspaceStatusByID(workspaceID)
+		if statusErr != nil {
+			return statusErr
 		}
 	}
 
-	time.Sleep(15 * time.Second)
-
-	if workspaceStatus.WorkspaceStatus != "STOPPED" {
-		return fmt.Errorf("Workspace was not stopped")
-	}
 	return nil
 }
 
+//GetHTTPAgents gets the Exec Agent and WSAgent from a Che5 or Che6 workspace
 func (c *CheAPI) GetHTTPAgents(workspaceID string) (Agent, error) {
-	var agents Agent
 
 	//Now we need to get the workspace installers and then unmarshall
-	runtimeData := c.GetJSON(c.CheAPIEndpoint + "/workspace/" + workspaceID)
+	runtimeData, _, reqErr := doRequest(http.MethodGet, c.CheAPIEndpoint+"/workspace/"+workspaceID, "")
 
-	var data RuntimeStruct
-	jsonErr := json.Unmarshal(runtimeData, &data)
-	if jsonErr != nil {
-		fmt.Errorf("Could not unmarshall data into RuntimeStruct: %v", jsonErr)
+	if reqErr != nil {
+		return Agent{}, reqErr
 	}
 
-	var data2 Che5RuntimeStruct
-	jsonErr2 := json.Unmarshal(runtimeData, &data2)
-	if jsonErr2 != nil {
-		fmt.Errorf("Could not unmarshall data into Che5Runtime: %v", jsonErr2)
-	}
+	var Che5Runtime Che5RuntimeStruct
+	json.Unmarshal(runtimeData, &Che5Runtime) //Not checking for unmarshalling errors because we don't know whether its che5 or che6 running
 
-	for key := range data.Runtime.Machines {
-		for key2, installer := range data.Runtime.Machines[key].Servers {
+	var Che6Runtime RuntimeStruct
+	json.Unmarshal(runtimeData, &Che6Runtime) //Not checking for unmarshalling errors because we don't know whether its che5 or che6 running
 
-			if key2 == "exec-agent/http" {
-				agents.execAgentURL = installer.URL
-			}
+	var agents Agent
 
-			if key2 == "wsagent/http" {
-				agents.wsAgentURL = installer.URL
-			}
+	for index := range Che5Runtime.Runtime.Machines {
+		for _, server := range Che5Runtime.Runtime.Machines[index].Runtime.Servers {
 
-		}
-	}
-
-	for index, _ := range data2.Runtime.Machines {
-		for _, server := range data2.Runtime.Machines[index].Runtime.Servers {
-			fmt.Printf("SERVER IS: %s", server)
 			if server.Ref == "exec-agent" {
-				agents.execAgentURL = server.URL
+				agents.execAgentURL = server.URL + "/process"
 			}
 
 			if server.Ref == "wsagent" {
@@ -408,130 +413,194 @@ func (c *CheAPI) GetHTTPAgents(workspaceID string) (Agent, error) {
 		}
 	}
 
+	for key := range Che6Runtime.Runtime.Machines {
+		for serverName, installer := range Che6Runtime.Runtime.Machines[key].Servers {
+
+			if serverName == "exec-agent/http" {
+				agents.execAgentURL = installer.URL
+			}
+
+			if serverName == "wsagent/http" {
+				agents.wsAgentURL = installer.URL
+			}
+
+		}
+	}
+
 	return agents, nil
 }
 
+//StartWorkspace POSTs a Workspace configuration to the workspace endpoint, creating a new workspace
 func (c *CheAPI) StartWorkspace(workspaceConfiguration interface{}, stackID string) (Workspace2, error) {
 
 	a := Post{Environments: workspaceConfiguration, Namespace: "che", Name: stackID + "-stack-test", DefaultEnv: "default"}
-	marshalled, _ := json.MarshalIndent(a, "", "    ")
+	marshalled, marshallErr := json.MarshalIndent(a, "", "    ")
+
+	if marshallErr != nil {
+		return Workspace2{}, marshallErr
+	}
+
+	//Get rid of bayesian when you're testing on RH-Che stacks
 	re := regexp.MustCompile(",[\\n|\\s]*\"com.redhat.bayesian.lsp\"")
 	noBayesian := re.ReplaceAllString(string(marshalled), "")
 
-	//fmt.Printf("%s\n", noBayesian)
+	workspaceDataJSON, _, reqErr := doRequest(http.MethodPost, c.CheAPIEndpoint+"/workspace?start-after-create=true", noBayesian)
 
-	req, err := http.NewRequest("POST", c.CheAPIEndpoint+"/workspace?start-after-create=true", bytes.NewBufferString(noBayesian))
-
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatal(err)
+	if reqErr != nil {
+		return Workspace2{}, reqErr
 	}
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(resp.Body)
-
-	defer resp.Body.Close()
 
 	var WorkspaceResponse Workspace2
-	json.Unmarshal(buf.Bytes(), &WorkspaceResponse)
+	unmarshallErr := json.Unmarshal(workspaceDataJSON, &WorkspaceResponse)
+	if unmarshallErr != nil {
+		return Workspace2{}, unmarshallErr
+	}
+
+	c.BlockWorkspace(WorkspaceResponse.ID, "STARTING", "")
 
 	return WorkspaceResponse, nil
 }
 
+//GetWorkspaceStatusByID gets the workspace status of the given workspaceID
 func (c *CheAPI) GetWorkspaceStatusByID(workspaceID string) (WorkspaceStatus, error) {
-	client := http.Client{
-		Timeout: time.Second * 60,
+	workspaceDataJSON, _, reqErr := doRequest(http.MethodGet, c.CheAPIEndpoint+"/workspace/"+workspaceID, "")
+
+	if reqErr != nil {
+		return WorkspaceStatus{}, reqErr
 	}
 
-	var data WorkspaceStatus
-
-	buf2 := new(bytes.Buffer)
-	url := c.CheAPIEndpoint + "/workspace/" + workspaceID
-	req, err := http.NewRequest(http.MethodGet, url, buf2)
-	if err != nil {
-		return data, fmt.Errorf("Could not retrieve contents at url: %s with error %v", url, err)
+	var workspaceStatusObj WorkspaceStatus
+	unmarshallErr := json.Unmarshal(workspaceDataJSON, &workspaceStatusObj)
+	if unmarshallErr != nil {
+		return workspaceStatusObj, unmarshallErr
 	}
 
-	res, getErr := client.Do(req)
-	if getErr != nil {
-		return data, fmt.Errorf("Could not retrieve contents at url: %s with error %v", url, getErr)
-	}
-
-	body, readErr := ioutil.ReadAll(res.Body)
-	if readErr != nil {
-		return data, fmt.Errorf("Could not retrieve response body: %v", readErr)
-	}
-
-	fmt.Printf("Trying to understand wtf is happening")
-	fmt.Printf("%v", string(body))
-
-	jsonErr := json.Unmarshal(body, &data)
-	if jsonErr != nil {
-		return data, fmt.Errorf("Could not unmarshal contents into WorkspaceStatus: %v", jsonErr)
-	}
-
-	return data, nil
+	return workspaceStatusObj, nil
 }
 
-func (c *CheAPI) CheckWorkspaceDeletion(workspaceID string) (int, error) {
-	client := http.Client{
-		Timeout: time.Second * 60,
+//CheckWorkspaceDeletion checks if the workspace at workspaceID is deleted
+func (c *CheAPI) CheckWorkspaceDeletion(workspaceID string) error {
+	_, statusCode, reqErr := doRequest(http.MethodGet, c.CheAPIEndpoint+"/workspace/"+workspaceID, "")
+
+	if reqErr != nil {
+		return reqErr
 	}
 
-	buf2 := new(bytes.Buffer)
-	url := c.CheAPIEndpoint + "/workspace/" + workspaceID
-	req, err := http.NewRequest(http.MethodGet, url, buf2)
-	res, _ := client.Do(req)
-	if err != nil {
-		return -1, err
+	if statusCode != 404 {
+		return fmt.Errorf("Workspace was not deleted")
 	}
-	return res.StatusCode, nil
+
+	return nil
 }
 
+//StopWorkspace stops the workspace with workspaceID
 func (c *CheAPI) StopWorkspace(workspaceID string) error {
-	url := c.CheAPIEndpoint + "/workspace/" + workspaceID + "/runtime"
-	req, err := http.NewRequest("DELETE", url, bytes.NewBufferString(""))
-	req.Header.Set("Content-Type", "application/json")
+	_, _, reqErr := doRequest(http.MethodDelete, c.CheAPIEndpoint+"/workspace/"+workspaceID+"/runtime", "")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf(err.Error())
+	if reqErr != nil {
+		return reqErr
 	}
-	resp.Body.Close()
 
-	c.BlockWorkspaceUntilStopped(workspaceID)
+	c.BlockWorkspace(workspaceID, "SNAPSHOTTING", "STOPPING")
 
 	return nil
 }
 
+//RemoveWorkspace removes the workspace with workspaceID
 func (c *CheAPI) RemoveWorkspace(workspaceID string) error {
-	url := c.CheAPIEndpoint + "/workspace/" + workspaceID
-	req, err := http.NewRequest("DELETE", url, bytes.NewBufferString(""))
-	req.Header.Set("Content-Type", "application/json")
+	_, _, reqErr := doRequest(http.MethodDelete, c.CheAPIEndpoint+"/workspace/"+workspaceID, "")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf(err.Error())
+	if reqErr != nil {
+		return reqErr
 	}
-
-	defer resp.Body.Close()
 
 	return nil
 }
 
+//GetStackInformation gets the stack information
+func (c *CheAPI) GetStackInformation() ([]Workspace, error) {
+	stackData, _, reqErr := doRequest(http.MethodGet, c.CheAPIEndpoint+"/stack", "")
+
+	if reqErr != nil {
+		return []Workspace{}, reqErr
+	}
+
+	var workspaceData []Workspace
+	jsonStackErr := json.Unmarshal(stackData, &workspaceData)
+	if jsonStackErr != nil {
+		return workspaceData, jsonStackErr
+	}
+
+	for ind, workspace := range workspaceData {
+		if len(workspace.Config.Commands) > 0 {
+			workspaceData[ind].Command = append(workspace.Command, workspace.Config.Commands...)
+		}
+	}
+
+	return workspaceData, nil
+}
+
+//GetSamplesInformation gets the samples information
+func (c *CheAPI) GetSamplesInformation() ([]Sample, error) {
+	samplesJSON, _, reqErr := doRequest(http.MethodGet, samples, "")
+
+	if reqErr != nil {
+		return []Sample{}, reqErr
+	}
+
+	var sampleData []Sample
+	jsonSamplesErr := json.Unmarshal([]byte(samplesJSON), &sampleData)
+	if jsonSamplesErr != nil {
+		return sampleData, jsonSamplesErr
+	}
+
+	return sampleData, nil
+}
+
+//GenerateDataForWorkspaces generates a map of workspaces with the stack name as the key and a map of samples with the project url as the key
+func (c *CheAPI) GenerateDataForWorkspaces(stackData []Workspace, samples []Sample) {
+	stackConfigInfo := make(map[string]Workspace)
+	sampleConfigInfo := make(map[string]Sample)
+	for _, stackElement := range stackData {
+		stackConfigInfo[stackElement.Name] = stackElement
+	}
+
+	for _, sampleElement := range samples {
+		sampleConfigInfo[sampleElement.Source.Location] = sampleElement
+	}
+
+	c.SetStackConfigMap(stackConfigInfo)
+	c.SetSamplesConfigMap(sampleConfigInfo)
+}
+
+//SetAgentsURL sets WSAgent the Exec Agent URL for CheAPI
 func (c *CheAPI) SetAgentsURL(agents Agent) {
 	c.WSAgentURL = agents.wsAgentURL
 	c.ExecAgentURL = agents.execAgentURL
 }
 
+//SetWorkspaceID sets the workspaceID for CheAPI
 func (c *CheAPI) SetWorkspaceID(workspaceID string) {
 	c.WorkspaceID = workspaceID
 }
 
+//SetStackName sets the stackName for CheAPI
 func (c *CheAPI) SetStackName(stackName string) {
 	c.StackName = stackName
+}
+
+func (c *CheAPI) SetStackConfigMap(workspaceConfig map[string]Workspace) {
+	stackConfigMap = workspaceConfig
+}
+
+func (c *CheAPI) SetSamplesConfigMap(sampleConfig map[string]Sample) {
+	sampleConfigMap = sampleConfig
+}
+
+func (c *CheAPI) GetStackConfigMap() map[string]Workspace {
+	return stackConfigMap
+}
+
+func (c *CheAPI) GetSamplesConfigMap() map[string]Sample {
+	return sampleConfigMap
 }
