@@ -1,4 +1,4 @@
-@che @che5
+@addon-che @addon @addon-che5
 Feature: Che add-on
   Che addon starts Eclipse Che
   
