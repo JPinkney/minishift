@@ -43,22 +43,15 @@ func (c *CheRunner) weTryToGetTheCheApiEndpoint() error {
 	if err2 != nil {
 		return err
 	}
-
-	fmt.Printf("Is this where it fails?\n")
 	if len(commandOutputs) > 0 {
 		endpoint := strings.Replace(commandOutputs[len(commandOutputs)-1].StdOut, "'", "", -1)
 
-		fmt.Printf("Starting to sleep now\n")
 		if c.runner.CheAPIEndpoint == "" {
 			time.Sleep(3 * time.Minute)
 		}
-		fmt.Printf("Finished sleeping\n")
 
 		c.runner.CheAPIEndpoint = "http://" + endpoint + "/api"
 	}
-
-	fmt.Printf("Test?\n")
-	fmt.Printf(c.runner.CheAPIEndpoint)
 
 	return nil
 }
@@ -70,14 +63,14 @@ func (c *CheRunner) cheApiEndpointShouldNotBeEmpty() error {
 	return nil
 }
 
-func (minishift *Minishift) applyingCHE_DOCKER_IMAGEAndOPENSHIFT_TOKENSucceeds() error {
+func (minishift *Minishift) applyingOpenshiftTokenSucceeds() error {
 	err := minishift.executingOcCommand("whoami -t")
 
 	if err != nil {
 		return err
 	}
 
-	minishiftErr := minishift.executingMinishiftCommand("addons apply --addon-env CHE_DOCKER_IMAGE=eclipse/che-server:nightly --addon-env OPENSHIFT_TOKEN=" + commandOutputs[len(commandOutputs)-1].StdOut + " che")
+	minishiftErr := minishift.executingMinishiftCommand("addons apply --addon-env OPENSHIFT_TOKEN=" + commandOutputs[len(commandOutputs)-1].StdOut + " che")
 
 	if minishiftErr != nil {
 		return minishiftErr

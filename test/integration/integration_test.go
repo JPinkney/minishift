@@ -312,13 +312,7 @@ func FeatureContext(s *godog.Suite) {
 		runner: cheAPI,
 	}
 
-	s.BeforeFeature(func(this *gherkin.Feature) {
-		cheAPIRunner.runner = util.CheAPI{
-			CheAPIEndpoint: "",
-		}
-	})
-
-	s.Step(`^applying CHE_DOCKER_IMAGE and OPENSHIFT_TOKEN succeeds$`, minishift.applyingCHE_DOCKER_IMAGEAndOPENSHIFT_TOKENSucceeds)
+	s.Step(`^applying openshift token succeeds$`, minishift.applyingOpenshiftTokenSucceeds)
 
 	// steps for testing che addon
 	s.Step(`^we try to get the che api endpoint$`, cheAPIRunner.weTryToGetTheCheApiEndpoint)

@@ -14,7 +14,7 @@ Feature: Che add-on
     Given Minishift has state "Does Not Exist"
     When executing "minishift start --memory=5GB" succeeds
     Then Minishift should have state "Running"
-    When applying CHE_DOCKER_IMAGE and OPENSHIFT_TOKEN succeeds
+    When applying openshift token succeeds
     Then executing "minishift addons list" succeeds
     And stdout should contain "che"
 
