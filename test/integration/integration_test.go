@@ -312,6 +312,12 @@ func FeatureContext(s *godog.Suite) {
 		runner: cheAPI,
 	}
 
+	s.BeforeFeature(func(this *gherkin.Feature) {
+		cheAPIRunner.runner = util.CheAPI{
+			CheAPIEndpoint: "",
+		}
+	})
+
 	s.Step(`^applying CHE_DOCKER_IMAGE and OPENSHIFT_TOKEN succeeds$`, minishift.applyingCHE_DOCKER_IMAGEAndOPENSHIFT_TOKENSucceeds)
 
 	// steps for testing che addon
@@ -328,16 +334,6 @@ func FeatureContext(s *godog.Suite) {
 	s.Step(`^user stops workspace$`, cheAPIRunner.userStopsWorkspace)
 	s.Step(`^workspace is removed$`, cheAPIRunner.workspaceIsRemoved)
 	s.Step(`^workspace removal should be successful$`, cheAPIRunner.workspaceRemovalShouldBeSuccessful)
-
-	s.AfterFeature(func(this *gherkin.Feature) {
-		cheAPI = util.CheAPI{
-			CheAPIEndpoint: "",
-		}
-
-		cheAPIRunner = &CheRunner{
-			runner: cheAPI,
-		}
-	})
 
 	s.BeforeSuite(func() {
 		testDir = setUp()

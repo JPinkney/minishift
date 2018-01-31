@@ -446,6 +446,7 @@ func (c *CheAPI) StartWorkspace(workspaceConfiguration interface{}, stackID stri
 	re := regexp.MustCompile(",[\\n|\\s]*\"com.redhat.bayesian.lsp\"")
 	noBayesian := re.ReplaceAllString(string(marshalled), "")
 
+	fmt.Printf("URL is %s\n", c.CheAPIEndpoint+"/workspace?start-after-create=true")
 	workspaceDataJSON, _, reqErr := doRequest(http.MethodPost, c.CheAPIEndpoint+"/workspace?start-after-create=true", noBayesian)
 
 	if reqErr != nil {
@@ -458,6 +459,9 @@ func (c *CheAPI) StartWorkspace(workspaceConfiguration interface{}, stackID stri
 		return Workspace2{}, unmarshallErr
 	}
 
+	fmt.Printf("WorkspaceDataJson is: \n" + string(workspaceDataJSON))
+	fmt.Printf("WorkspaceResponse ID is: \n" + WorkspaceResponse.ID)
+
 	c.BlockWorkspace(WorkspaceResponse.ID, "STARTING", "")
 
 	return WorkspaceResponse, nil
@@ -465,6 +469,7 @@ func (c *CheAPI) StartWorkspace(workspaceConfiguration interface{}, stackID stri
 
 //GetWorkspaceStatusByID gets the workspace status of the given workspaceID
 func (c *CheAPI) GetWorkspaceStatusByID(workspaceID string) (WorkspaceStatus, error) {
+
 	workspaceDataJSON, _, reqErr := doRequest(http.MethodGet, c.CheAPIEndpoint+"/workspace/"+workspaceID, "")
 
 	if reqErr != nil {

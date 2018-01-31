@@ -5,9 +5,9 @@ Feature: Che add-on
   Scenario: User enables the che add-on
     Given executing "minishift addons install --defaults" succeeds 
     And executing "minishift addons enable anyuid" succeeds
-    When file from "https://raw.githubusercontent.com/l0rd/minishift-addons/6866413f44ab265c7fa8e52e49203f17ac180454/add-ons/che/rb/che-admin-rb.json" is downloaded into location "download/che/rb"
-    And file from "https://raw.githubusercontent.com/l0rd/minishift-addons/6866413f44ab265c7fa8e52e49203f17ac180454/add-ons/che/templates/che-single-user.yml" is downloaded into location "download/che/templates"
-    And file from "https://raw.githubusercontent.com/l0rd/minishift-addons/6866413f44ab265c7fa8e52e49203f17ac180454/add-ons/che/che.addon" is downloaded into location "download/che"
+    When file from "https://raw.githubusercontent.com/minishift/minishift-addons/master/add-ons/che/rb/che-admin-rb.json" is downloaded into location "download/che/rb"
+    And file from "https://raw.githubusercontent.com/minishift/minishift-addons/master/add-ons/che/templates/che-single-user.yml" is downloaded into location "download/che/templates"
+    And file from "https://raw.githubusercontent.com/minishift/minishift-addons/master/add-ons/che/che.addon" is downloaded into location "download/che"
     And executing "minishift addons install ../../out/integration-test/download/che" succeeds
     And executing "minishift addons enable che" succeeds
     Then executing "minishift addons list" succeeds
@@ -39,13 +39,6 @@ Feature: Che add-on
     Examples:
     | stack                 | sample                                                                   |
     | Eclipse Vert.x        | https://github.com/openshiftio-vertx-boosters/vertx-http-booster         |
-    | Java CentOS           | https://github.com/che-samples/console-java-simple.git                   |
-    | Spring Boot           | https://github.com/snowdrop/spring-boot-http-booster                     |
-    | CentOS WildFly Swarm  | https://github.com/wildfly-swarm-openshiftio-boosters/wfswarm-rest-http  |
-    | Python                | https://github.com/che-samples/console-python3-simple.git                |
-    | PHP                   | https://github.com/che-samples/web-php-simple.git                        |
-    | .NET CentOS           | https://github.com/che-samples/dotnet-web-simple.git                     |
-    | C++                   | https://github.com/che-samples/console-cpp-simple.git                    |
   
   Scenario: User deletes Minishift
      When executing "minishift delete --force" succeeds

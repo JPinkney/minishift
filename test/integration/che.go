@@ -44,14 +44,21 @@ func (c *CheRunner) weTryToGetTheCheApiEndpoint() error {
 		return err
 	}
 
+	fmt.Printf("Is this where it fails?\n")
 	if len(commandOutputs) > 0 {
 		endpoint := strings.Replace(commandOutputs[len(commandOutputs)-1].StdOut, "'", "", -1)
 
+		fmt.Printf("Starting to sleep now\n")
 		if c.runner.CheAPIEndpoint == "" {
-			c.runner.CheAPIEndpoint = "http://" + endpoint + "/api"
 			time.Sleep(3 * time.Minute)
 		}
+		fmt.Printf("Finished sleeping\n")
+
+		c.runner.CheAPIEndpoint = "http://" + endpoint + "/api"
 	}
+
+	fmt.Printf("Test?\n")
+	fmt.Printf(c.runner.CheAPIEndpoint)
 
 	return nil
 }
